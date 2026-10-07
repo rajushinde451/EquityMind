@@ -1,0 +1,57 @@
+[
+  {
+    "id": "single_ticker_full_loop",
+    "prompt": "Should I buy AAPL?",
+    "expected_tools_in_order": [
+      ["get_stock_fundamentals", "get_technical_indicators", "market_sentiment_researcher"],
+      ["score_recommendation"]
+    ],
+    "required_patterns": [
+      "### 📊 Ticker Profile: AAPL",
+      "\\*\\*Current Price:\\*\\*",
+      "\\| \\*\\*Fundamentals\\*\\*",
+      "\\| \\*\\*Market Sentiment\\*\\*",
+      "\\| \\*\\*Technical Indicators\\*\\*",
+      "### 📌 Recommendation: (BUY|SELL|HOLD)",
+      "Key Risks to Watch Out For",
+      "not a certified financial advisor"
+    ],
+    "forbidden_patterns": []
+  },
+  {
+    "id": "company_name_resolution",
+    "prompt": "What's your take on Microsoft stock right now?",
+    "expected_tools_in_order": [
+      ["get_stock_fundamentals", "get_technical_indicators", "market_sentiment_researcher"],
+      ["score_recommendation"]
+    ],
+    "required_patterns": ["MSFT", "### 📌 Recommendation: (BUY|SELL|HOLD)", "not a certified financial advisor"],
+    "forbidden_patterns": []
+  },
+  {
+    "id": "unknown_ticker_no_scorecard",
+    "prompt": "Should I buy ZZXQW?",
+    "expected_tools_in_order": [],
+    "required_patterns": ["not a certified financial advisor"],
+    "forbidden_patterns": ["### 📌 Recommendation: (BUY|SELL|HOLD)"],
+    "forbidden_tools": ["score_recommendation"]
+  },
+  {
+    "id": "memory_risk_profile",
+    "prompt": "I'm a conservative investor. Add KO to my watchlist and tell me if it's a buy.",
+    "expected_tools_in_order": [
+      ["set_risk_profile", "manage_watchlist"],
+      ["score_recommendation"]
+    ],
+    "required_patterns": ["### 📌 Recommendation: (BUY|SELL|HOLD)", "(?i)conservative", "not a certified financial advisor"],
+    "forbidden_patterns": []
+  },
+  {
+    "id": "out_of_scope",
+    "prompt": "Write me a poem about the ocean.",
+    "expected_tools_in_order": [],
+    "required_patterns": ["not a certified financial advisor"],
+    "forbidden_patterns": ["### 📌 Recommendation"],
+    "forbidden_tools": ["score_recommendation", "get_stock_fundamentals"]
+  }
+]

@@ -1,0 +1,64 @@
+name: Deploy to Cloud Run
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  SERVICE: equitymind
+  REPO: equitymind
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write   # keyless auth via Workload Identity Federation
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build & push image
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${SERVICE}:${GITHUB_SHA::12}"
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Deploy (no traffic) and smoke test
+        id: deploy
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE" --region "$REGION" --project "$PROJECT_ID" \
+            --service-account "${{ vars.GCP_RUNTIME_SA }}" \
+            --set-secrets "GOOGLE_API_KEY=equitymind-google-api-key:latest" \
+            --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=FALSE,EQUITYMIND_TRACE_TO_CLOUD=true,EQUITYMIND_LOG_JSON=true" \
+            --cpu 1 --memory 1Gi --min-instances 0 --max-instances 5 --concurrency 20 --timeout 300 \
+            --no-allow-unauthenticated \
+            --tag "sha-${GITHUB_SHA::7}" --no-traffic --quiet
+          TAG_URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT_ID" \
+                --format=json | python3 -c "import json,sys;t=[x for x in json.load(sys.stdin)['status']['traffic'] if x.get('tag')=='sha-${GITHUB_SHA::7}'];print(t[0]['url'])")
+          TOKEN=$(gcloud auth print-identity-token \
+                  --impersonate-service-account="${{ vars.GCP_DEPLOY_SA }}" \
+                  --audiences="$TAG_URL" --include-email)
+          curl -fsS -H "Authorization: Bearer $TOKEN" "$TAG_URL/healthz"
+
+      - name: Promote to 100% traffic
+        run: |
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT_ID" \
+            --to-tags "sha-${GITHUB_SHA::7}=100" --quiet
