@@ -29,7 +29,7 @@ jobs:
           uv run ruff format --check .
       - name: Unit tests (offline) + coverage
         run: uv run pytest -q --cov --cov-report=xml --cov-report=term --cov-fail-under=80
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: matrix.python == '3.12'
         with:
           name: coverage
@@ -74,7 +74,7 @@ jobs:
       - name: Run agent evals
         if: env.GOOGLE_API_KEY != ''
         run: uv run python evals/run_eval.py --min-pass-rate 0.8
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && env.GOOGLE_API_KEY != ''
         with:
           name: eval-results
