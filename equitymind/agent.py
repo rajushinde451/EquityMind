@@ -28,15 +28,20 @@ from google.genai import types
 
 from .config import settings
 from .guardrails import enforce_disclaimer, validate_ticker_args
+from .memory_consolidation import apply_pending_digest, recall_past_conversations, schedule_consolidation
 from .observability import (
+    after_agent_observe,
     after_model_observe,
     after_tool_observe,
+    before_agent_observe,
     before_model_observe,
     before_tool_observe,
     configure_logging,
 )
+from .pii import redact_pii_in_request
 from .prompt import build_root_instruction, build_sentiment_instruction
 from .tools import (
+    clear_analysis_history,
     get_analysis_history,
     get_stock_fundamentals,
     get_technical_indicators,
@@ -46,6 +51,9 @@ from .tools import (
 )
 
 configure_logging()
+
+# Model-input PII scrubbing runs first (mutates the request, returns None).
+_BEFORE_MODEL = ([redact_pii_in_request] if settings.redact_model_input else []) + [before_model_observe]
 
 
 def _root_instruction(ctx) -> str:
@@ -68,7 +76,7 @@ sentiment_agent = Agent(
     instruction=_sentiment_instruction,
     tools=[google_search],
     generate_content_config=types.GenerateContentConfig(temperature=0.1),
-    before_model_callback=before_model_observe,
+    before_model_callback=_BEFORE_MODEL,
     after_model_callback=after_model_observe,
 )
 
@@ -78,19 +86,28 @@ root_agent = Agent(
     description="Financial analyst agent producing Buy/Sell/Hold stock scorecards.",
     instruction=_root_instruction,
     tools=[
+        # Analysis loop
         get_stock_fundamentals,
         get_technical_indicators,
         AgentTool(agent=sentiment_agent),
         score_recommendation,
+        # Memory (HITL-gated where state changes are consequential)
         set_risk_profile,
         manage_watchlist,
         get_analysis_history,
+        clear_analysis_history,
+        recall_past_conversations,
     ],
     generate_content_config=types.GenerateContentConfig(temperature=0.2),
-    before_model_callback=before_model_observe,
+    # Turn lifecycle: apply last turn's background digest, log intent ...
+    before_agent_callback=[apply_pending_digest, before_agent_observe],
+    # ... log outcome, then kick off async consolidation (non-blocking).
+    after_agent_callback=[after_agent_observe, schedule_consolidation],
+    before_model_callback=_BEFORE_MODEL,
     # ADK stops at the first callback returning non-None, so the observer
     # (always returns None) runs first, then the disclaimer guardrail.
     after_model_callback=[after_model_observe, enforce_disclaimer],
-    before_tool_callback=[validate_ticker_args, before_tool_observe],
+    # Intent is logged for every attempted call, including ones the validator rejects.
+    before_tool_callback=[before_tool_observe, validate_ticker_args],
     after_tool_callback=after_tool_observe,
 )

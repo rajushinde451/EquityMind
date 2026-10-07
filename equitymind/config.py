@@ -20,6 +20,9 @@ class Settings:
     log_json: bool = _bool("EQUITYMIND_LOG_JSON", True)
     # Server / infra
     session_service_uri: str | None = os.getenv("EQUITYMIND_SESSION_URI") or None
+    # e.g. "agentengine://<agent_engine_id>" for Vertex AI Memory Bank; None = in-memory.
+    memory_service_uri: str | None = os.getenv("EQUITYMIND_MEMORY_URI") or None
+    redact_model_input: bool = _bool("EQUITYMIND_REDACT_MODEL_INPUT", True)
     trace_to_cloud: bool = _bool("EQUITYMIND_TRACE_TO_CLOUD", False)
     serve_web_ui: bool = _bool("EQUITYMIND_SERVE_WEB_UI", True)
     allowed_origins: tuple[str, ...] = tuple(o for o in os.getenv("EQUITYMIND_ALLOWED_ORIGINS", "*").split(",") if o)

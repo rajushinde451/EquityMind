@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
+from .memory_consolidation import DIGEST_KEY, render_digest
 from .tools.memory import DEFAULT_RISK_PROFILE, HISTORY_KEY, RISK_PROFILE_KEY, WATCHLIST_KEY
 
 ROOT_INSTRUCTION = """
@@ -32,6 +33,13 @@ Rules for the loop:
 - Use `set_risk_profile` when the user states their risk tolerance; it changes the scoring weights.
 - Use `manage_watchlist` to add/remove/list tickers when asked.
 - Use `get_analysis_history` when the user asks about previous analyses or how a view has changed. If a ticker was analysed before (see USER CONTEXT), briefly mention the prior call and price.
+- Use `recall_past_conversations` to search older conversations when the user references something not present in USER CONTEXT.
+- Use `clear_analysis_history` only when the user explicitly asks to delete their history.
+
+# Human Approval (Human-in-the-Loop)
+- Changing a saved risk profile, removing a watchlist ticker, and deleting history require the user's explicit approval. The tool pauses and the user is shown an approve/reject prompt.
+- If a tool returns status "pending_confirmation", tell the user what is awaiting their approval and stop; do not claim the change was made.
+- If it returns "cancelled", acknowledge that nothing was changed. Never try to bypass a declined confirmation.
 
 # Response Template (Strict Structure)
 All ticker analyses must be presented in the following format:
@@ -106,6 +114,8 @@ def render_user_context(state: Any) -> str:
         f"- Risk profile: {profile}" + (" (default)" if state.get(RISK_PROFILE_KEY) is None else ""),
         f"- Watchlist: {', '.join(watchlist) if watchlist else 'empty'}",
     ]
+    # Long-horizon memory, compacted by the background consolidation task.
+    lines += render_digest(state.get(DIGEST_KEY))
     if history:
         lines.append("- Recent analyses (newest last):")
         lines += [
