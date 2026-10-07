@@ -22,7 +22,7 @@ jobs:
       contents: read
       id-token: write   # keyless auth via Workload Identity Federation
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: auth
         uses: google-github-actions/auth@v2
